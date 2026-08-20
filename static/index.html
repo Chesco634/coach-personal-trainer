@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Coach - Personal Trainer</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --bubble-user: #2f6fed;
+    --bubble-coach: #232833;
+    --text: #eef0f4;
+    --muted: #8a90a0;
+    --accent: #38d39f;
+    --warn: #e0a84d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  header {
+    padding: 14px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid #262b36;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  header .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #2f6fed);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header p { margin: 0; font-size: 12px; color: var(--muted); }
+
+  #reminder {
+    display: none;
+    background: #2b2410;
+    color: var(--warn);
+    padding: 8px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid #3a2f14;
+  }
+
+  #messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg {
+    max-width: 82%;
+    padding: 10px 13px;
+    border-radius: 16px;
+    line-height: 1.4;
+    font-size: 14.5px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--bubble-user);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .msg.coach {
+    align-self: flex-start;
+    background: var(--bubble-coach);
+    border-bottom-left-radius: 4px;
+  }
+  .msg.typing {
+    align-self: flex-start;
+    background: var(--bubble-coach);
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  form#composer {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: var(--panel);
+    border-top: 1px solid #262b36;
+  }
+  #input {
+    flex: 1;
+    background: #1f232d;
+    border: 1px solid #2c3140;
+    color: var(--text);
+    border-radius: 20px;
+    padding: 11px 16px;
+    font-size: 15px;
+    outline: none;
+  }
+  #send {
+    background: var(--accent);
+    border: none;
+    color: #0f1115;
+    font-weight: 600;
+    border-radius: 20px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+  #send:disabled { opacity: 0.5; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="avatar">🏋️</div>
+    <div>
+      <h1>Coach</h1>
+      <p>tu personal trainer</p>
+    </div>
+  </header>
+  <div id="reminder"></div>
+  <div id="messages"></div>
+  <form id="composer">
+    <input id="input" type="text" placeholder="Escribile a Coach..." autocomplete="off" />
+    <button id="send" type="submit">Enviar</button>
+  </form>
+</div>
+
+<script>
+  const messagesEl = document.getElementById('messages');
+  const form = document.getElementById('composer');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const reminderEl = document.getElementById('reminder');
+
+  function addMessage(text, who) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + who;
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function setTyping(on) {
+    let el = document.getElementById('typing-indicator');
+    if (on) {
+      if (!el) {
+        el = addMessage('Coach esta escribiendo...', 'typing');
+        el.id = 'typing-indicator';
+      }
+    } else if (el) {
+      el.remove();
+    }
+  }
+
+  async function loadEstado() {
+    try {
+      const r = await fetch('/estado');
+      const data = await r.json();
+      if (data.dias_sin_entrenar !== null && data.dias_sin_entrenar >= 3) {
+        reminderEl.style.display = 'block';
+        reminderEl.textContent = `Van ${data.dias_sin_entrenar} dias sin registrar un entrenamiento. Contale a Coach como venis.`;
+      }
+    } catch (e) { /* silencioso */ }
+  }
+
+  async function sendMessage(text) {
+    addMessage(text, 'user');
+    input.value = '';
+    sendBtn.disabled = true;
+    setTyping(true);
+    try {
+      const r = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      setTyping(false);
+      addMessage(data.reply || '(sin respuesta)', 'coach');
+      if (data.dias_sin_entrenar !== null && data.dias_sin_entrenar >= 3) {
+        reminderEl.style.display = 'block';
+        reminderEl.textContent = `Van ${data.dias_sin_entrenar} dias sin registrar un entrenamiento.`;
+      } else {
+        reminderEl.style.display = 'none';
+      }
+    } catch (e) {
+      setTyping(false);
+      addMessage('Uh, algo fallo hablando con el servidor. Probá de nuevo en un rato.', 'coach');
+      console.error(e);
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    sendMessage(text);
+  });
+
+  loadEstado();
+  addMessage('Hola! Soy Coach. Escribime "hola" para arrancar y te ayudo con tu rutina, tu progreso y tu peso.', 'coach');
+  input.focus();
+</script>
+</body>
+</html>
